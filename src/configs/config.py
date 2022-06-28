@@ -312,6 +312,16 @@ class SharedConfigs(object):
         args.num_labels = 1 if args.loss_type == "rank" else 2
         return args
 
+    def get_demo_args(self):
+        self.parser.add_argument(
+            "--device", default="cuda:0", type=str, choices=["cuda:0", "cpu"],
+            help="which device to run")
+        self.parser.add_argument("--video_path", required=True, type=str)
+        self.parser.add_argument("--caption", required=True, type=str)
+        self.parser.add_argument("--foil", required=True, type=str)
+        args = self.parse_args()
+        return args
+
     def get_vqa_args(self):
         self.parser.add_argument("--ans2label_path", type=str,
                                  help="path to {answer: label} file")

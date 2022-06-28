@@ -48,14 +48,17 @@ class GridFeatBackbone(nn.Module):
         )
         self.input_format = input_format
         assert input_format == "BGR", "detectron 2 image input format should be BGR"
-        
+
         self.config = config
 
     def __setup__(self, config_file):
         """
         Create configs and perform basic setups.
         """
-        rank = hvd.rank()
+        try:
+            rank = hvd.rank()
+        except ValueError:
+            rank = 0
         detectron2_cfg = get_cfg()
         add_attribute_config(detectron2_cfg)
         detectron2_cfg.merge_from_file(config_file)

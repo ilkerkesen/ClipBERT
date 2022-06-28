@@ -33,7 +33,8 @@ from os.path import join, exists
 from easydict import EasyDict as edict
 from apex import amp
 from torch.utils.data.distributed import DistributedSampler
-import horovod.torch as hvd
+from torch.utils.data import DataLoader
+# import horovod.torch as hvd
 from src.utils.distributed import all_gather_list
 from collections import defaultdict
 
@@ -106,15 +107,15 @@ def mk_video_ret_dataloader(anno_path, lmdb_dir, cfg, tokenizer, is_train=True):
         batch_size = cfg.inference_batch_size
     else:
         batch_size = cfg.train_batch_size if is_train else cfg.val_batch_size
-    sampler = DistributedSampler(
-        dataset, num_replicas=hvd.size(), rank=hvd.rank(),
-        shuffle=is_train)
+    # sampler = DistributedSampler(
+    #    dataset, num_replicas=hvd.size(), rank=hvd.rank(),
+    #    shuffle=is_train)
     vqa_collator = VideoRetrievalCollator(
         tokenizer=tokenizer, max_length=cfg.max_txt_len)
     dataloader = DataLoader(dataset,
                             batch_size=batch_size,
                             shuffle=False,
-                            sampler=sampler,
+                            # sampler=sampler,
                             num_workers=cfg.n_workers,
                             pin_memory=cfg.pin_mem,
                             collate_fn=vqa_collator.collate_batch)
@@ -143,15 +144,15 @@ def mk_video_ret_eval_dataloader(anno_path, lmdb_dir, cfg, tokenizer):
         frm_sampling_strategy=frm_sampling_strategy,
         ensemble_n_clips=cfg.inference_n_clips,
     )
-    sampler = DistributedSampler(
-        dataset, num_replicas=hvd.size(), rank=hvd.rank(),
-        shuffle=False)
+    # sampler = DistributedSampler(
+    #     dataset, num_replicas=hvd.size(), rank=hvd.rank(),
+    #     shuffle=False)
     retrieval_collator = VideoRetrievalCollator(
         tokenizer=tokenizer, max_length=cfg.max_txt_len)
     dataloader = DataLoader(dataset,
                             batch_size=1,  # already batched in dataset
                             shuffle=False,
-                            sampler=sampler,
+                            # sampler=sampler,
                             num_workers=cfg.n_workers,
                             pin_memory=cfg.pin_mem,
                             collate_fn=retrieval_collator.collate_batch)
@@ -265,7 +266,8 @@ def validate(model, val_loader, eval_loader, cfg, train_global_step, eval_filepa
 
     model.train()
 
-    if hvd.rank() == 0:
+    # if hvd.rank() == 0:
+    if True:
         # average loss for each example
         acc = float(n_corrects / n_ex)
         val_log = {'valid/loss': float(loss / n_ex), 'valid/acc': acc}
@@ -280,29 +282,33 @@ def validate(model, val_loader, eval_loader, cfg, train_global_step, eval_filepa
 def start_training(cfg):
     set_random_seed(cfg.seed)
 
-    n_gpu = hvd.size()
+    # n_gpu = hvd.size()
+    n_gpu = 1
     cfg.n_gpu = n_gpu
-    device = torch.device("cuda", hvd.local_rank())
-    torch.cuda.set_device(hvd.local_rank())
-    if hvd.rank() != 0:
-        LOGGER.disabled = True
+
+    # FIXME: hvd -> pytorch
+    # device = torch.device("cuda", hvd.local_rank())
+    # torch.cuda.set_device(hvd.local_rank())
+    # if hvd.rank() != 0:
+    #    LOGGER.disabled = True
+    device = torch.device('cuda:0')
     LOGGER.info("device: {} n_gpu: {}, rank: {}, "
                 "16-bits training: {}".format(
-                    device, n_gpu, hvd.rank(), bool(cfg.fp16)))
+                    device, n_gpu, 0, bool(cfg.fp16)))
 
     model = setup_model(cfg, device=device)
     model.train()
     optimizer = setup_e2e_optimizer(model, cfg)
 
     # Horovod: (optional) compression algorithm.compressin
-    compression = hvd.Compression.none
-    optimizer = hvd.DistributedOptimizer(
-        optimizer, named_parameters=model.named_parameters(),
-        compression=compression)
+    # compression = hvd.Compression.none
+    # optimizer = hvd.DistributedOptimizer(
+    #     optimizer, named_parameters=model.named_parameters(),
+    #     compression=compression)
 
     #  Horovod: broadcast parameters & optimizer state.
-    hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-    hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+    # hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+    # hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
     model, optimizer = amp.initialize(
         model, optimizer, enabled=cfg.fp16, opt_level='O2',
@@ -335,7 +341,8 @@ def start_training(cfg):
     restorer = TrainingRestorer(cfg, model, optimizer)
     global_step = restorer.global_step
     TB_LOGGER.global_step = global_step
-    if hvd.rank() == 0:
+    # if hvd.rank() == 0:
+    if True:
         LOGGER.info("Saving training meta...")
         save_training_meta(cfg)
         path = join(
@@ -369,10 +376,15 @@ def start_training(cfg):
     LOGGER.info(f"  Validate every {cfg.valid_steps} steps, in total {actual_num_valid} times")
 
     # quick hack for amp delay_unscale bug
-    with optimizer.skip_synchronize():
-        optimizer.zero_grad()
-        if global_step == 0:
-            optimizer.step()
+    # with optimizer.skip_synchronize():
+    #     optimizer.zero_grad()
+    #     if global_step == 0:
+    #         optimizer.step()
+
+    optimizer.zero_grad()
+    if global_step == 0:
+        optimizer.step()
+
     debug_step = 3
     running_loss = RunningMeter('train_loss')
 
@@ -397,6 +409,7 @@ def start_training(cfg):
             # (B, num_frm, C, H, W)
             mini_batch["visual_inputs"] = visual_inputs[:, clip_idx]
             mini_batch["n_examples_list"] = batch["n_examples_list"]
+            import ipdb; ipdb.set_trace()
             outputs = forward_step(model, mini_batch, cfg)
             logits.append(outputs["logits"])
             # the losses are cross entropy and mse, no need to * num_labels
@@ -632,7 +645,8 @@ def inference_retrieval(model, val_loader, eval_file_path, cfg):
     st = time.time()
     eval_bsz = cfg.inference_batch_size if cfg.do_inference else cfg.eval_retrieval_batch_size
     LOGGER.info(f"Evaluate retrieval #video per GPU: {len(val_loader)}")
-    if hvd.rank() == 0:
+    # if hvd.rank() == 0:
+    if True:
         pbar = tqdm(total=len(val_loader), desc="eval")
 
     for batch in val_loader:
@@ -687,14 +701,16 @@ def inference_retrieval(model, val_loader, eval_file_path, cfg):
                     score=round(score, 4)
                 ))
 
-        if hvd.rank() == 0:
+        # if hvd.rank() == 0:
+        if True:
             pbar.update(1)
 
     # ###### Saving with Horovod ####################
     # dummy sync
     _ = None
     all_gather_list(_)
-    n_gpu = hvd.size()
+    # n_gpu = hvd.size()
+    n_gpu = 1
     eval_dir = join(cfg.output_dir, f"results_{os.path.splitext(os.path.basename(eval_file_path))[0]}")
     os.makedirs(eval_dir, exist_ok=True)
     if n_gpu > 1:
@@ -706,7 +722,7 @@ def inference_retrieval(model, val_loader, eval_file_path, cfg):
                 LOGGER.info(f"Save results trial NO. {save_trial}")
                 save_json(
                     retrieval_res,
-                    join(eval_dir, f"tmp_results_rank{hvd.rank()}.json"))
+                    join(eval_dir, f"tmp_results_rank{0}.json"))
                 break
             except Exception as e:
                 print(f"Saving exception: {e}")
@@ -716,14 +732,15 @@ def inference_retrieval(model, val_loader, eval_file_path, cfg):
     _ = None
     all_gather_list(_)
     # join results
-    if n_gpu > 1 and hvd.rank() == 0:
+    if n_gpu > 1:
         retrieval_res = []
         for rk in range(n_gpu):
             retrieval_res.extend(load_json(
                 join(eval_dir, f"tmp_results_rank{rk}.json")))
         LOGGER.info('results joined')
 
-    if hvd.rank() == 0:
+    # if hvd.rank() == 0:
+    if True:
         retrieval_metrics = eval_retrieval(
             retrieval_res, val_loader.dataset.gt_cap_id2vid_id, val_loader.dataset.id2data)
         LOGGER.info(f"validation finished in {int(time.time() - st)} seconds. scores: {retrieval_metrics}")
@@ -736,10 +753,12 @@ def inference_retrieval(model, val_loader, eval_file_path, cfg):
 
 def start_inference(cfg):
     set_random_seed(cfg.seed)
-    n_gpu = hvd.size()
-    device = torch.device("cuda", hvd.local_rank())
-    torch.cuda.set_device(hvd.local_rank())
-    if hvd.rank() != 0:
+    # n_gpu = hvd.size()
+    n_gpu = 1
+    device = torch.device("cuda:0")
+    # torch.cuda.set_device(hvd.local_rank())
+    # if hvd.rank() != 0:
+    if False:
         LOGGER.disabled = True
 
     inference_res_dir = join(
@@ -748,14 +767,15 @@ def start_inference(cfg):
         f"step_{cfg.inference_model_step}_{cfg.inference_n_clips}_{cfg.score_agg_func}"
     )
 
-    if hvd.rank() == 0:
+    # if hvd.rank() == 0:
+    if True:
         os.makedirs(inference_res_dir, exist_ok=True)
         save_json(cfg, join(inference_res_dir, "raw_args.json"),
                   save_pretty=True)
 
     LOGGER.info("device: {} n_gpu: {}, rank: {}, "
                 "16-bits training: {}".format(
-                    device, n_gpu, hvd.rank(), bool(cfg.fp16)))
+                    device, n_gpu, 0, bool(cfg.fp16)))
 
     # overwrite cfg with stored_cfg,
     # but skip keys containing the keyword 'inference'
@@ -804,7 +824,8 @@ def start_inference(cfg):
     ret_results, ret_scores = inference_retrieval(
         model, val_loader, cfg.inference_txt_db, cfg)
 
-    if hvd.rank() == 0:
+    # if hvd.rank() == 0:
+    if True:
         save_json(cfg, join(inference_res_dir, "merged_args.json"),
                   save_pretty=True)
         save_json(ret_results, join(inference_res_dir, "results.json"),
@@ -815,7 +836,7 @@ def start_inference(cfg):
 
 if __name__ == '__main__':
     # Initialize Horovod
-    hvd.init()
+    # hvd.init()
     input_cfg = shared_configs.get_video_retrieval_args()
     if input_cfg.do_inference:
         start_inference(input_cfg)
