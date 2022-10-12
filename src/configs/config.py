@@ -322,6 +322,16 @@ class SharedConfigs(object):
         args = self.parse_args()
         return args
 
+    def get_bench_args(self):
+        self.parser.add_argument(
+            "--device", default="cuda:0", type=str, choices=["cuda:0", "cpu"],
+            help="which device to run")
+        self.parser.add_argument("--json_path", required=True, type=str)
+        self.parser.add_argument("--quva_dir", required=True, type=str)
+        self.parser.add_argument("--num_frames", required=True, type=int)
+        args = self.parse_args()
+        return args
+
     def get_vqa_args(self):
         self.parser.add_argument("--ans2label_path", type=str,
                                  help="path to {answer: label} file")
