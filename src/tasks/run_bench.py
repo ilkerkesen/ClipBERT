@@ -249,6 +249,7 @@ def start_demo(cfg):
     data = Dataset_v1(
         cfg.json_path,
         quva_dir=cfg.quva_dir,
+        something_something_dir=cfg.something_something_dir,
         num_frames=cfg.num_frames,
         tokenizer=tokenizer,    
     )
@@ -265,7 +266,7 @@ def start_demo(cfg):
         )
         output = forward_step(model, batch, cfg)
         num_examples += 1
-        if output['itm_scores'][:, 1].argmax().item() == 0:
+        if output['itm_scores'][:, 0].argmax().item() == 0:
             num_correct += 1
     LOGGER.info(f"accuracy = {round(100*num_correct/num_examples, 2)}%")
 
