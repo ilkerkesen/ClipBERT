@@ -1,22 +1,22 @@
-# Copyright (c) Microsoft Corporation.
-# Licensed under the MIT license.
+#!/bin/bash
 
-TXT_DB=$1
-IMG_DIR=$2
-OUTPUT=$3
-PRETRAIN_DIR=$4
+REPO_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+CONTAINER_PATH=$1
+PATH_TO_STORAGE=$2
+JSON_DIR=$3
+OUTPUT_DIR=$4
+DATA=$PATH_TO_STORAGE
+QUVA_DIR=${QUVA_DIR:-""}
+SOMETHING_SOMETHING_DIR=${SOMETHING_SOMETHING_DIR:-""}
+export CONFIG_PATH=/clipbert/src/configs/msrvtt_ret_base_resnet50.json
 
-if [ -z $CUDA_VISIBLE_DEVICES ]; then
-    CUDA_VISIBLE_DEVICES='all'
-fi
-
-docker run --gpus '"'device=$CUDA_VISIBLE_DEVICES'"' --ipc=host --rm -it \
-    --mount src=$(pwd),dst=/clipbert,type=bind \
-    --mount src=$OUTPUT,dst=/storage,type=bind \
-    --mount src=$PRETRAIN_DIR,dst=/pretrain,type=bind,readonly \
-    --mount src=$TXT_DB,dst=/txt,type=bind,readonly \
-    --mount src=$IMG_DIR,dst=/img,type=bind,readonly \
-    -e NVIDIA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES \
-    -w /clipbert jayleicn/clipbert:latest \
-    bash -c "source /clipbert/setup.sh && bash" \
-
+singularity shell \
+    --bind $REPO_DIR:/clipbert \
+    --bind $DATA/pretrained:/pretrain \
+    --bind $DATA/txt_db:/txt \
+    --bind $DATA/vis_db:/img \
+    --bind $OUTPUT_DIR:/storage \
+    --bind $JSON_DIR:/annotations \
+    --bind $QUVA_DIR:/quva \
+    --bind $SOMETHING_SOMETHING_DIR:/something \
+    --nv $CONTAINER_PATH
