@@ -1,11 +1,6 @@
 import torch
-import os
-import os.path as osp
-import cv2
-from PIL import Image
-import time
+import json
 import random
-import math
 from transformers import BertConfig, BertTokenizerFast
 from src.modeling.modeling import ClipBertForPreTraining, ClipBertForVideoTextRetrieval
 
@@ -16,7 +11,7 @@ from src.datasets.dataset_video_retrieval import (
     VideoRetrievalCollator,
     ClipBertVideoRetrievalEvalDataset,
 )
-from src.datasets.dataset_vl_bench import (Dataset_v1)
+from src.datasets.dataset_vl_bench import Dataset_v1, process_path
 from src.datasets.dataloader import InfiniteIterator, PrefetchLoader
 from src.datasets.data_utils import ImageNorm, mk_input_group
 from torch.utils.data import DataLoader
@@ -197,11 +192,11 @@ def setup_model(cfg, device=None):
     ]
     # for k in add_attr_list:
     #    setattr(model_cfg, k, cfg[k])
-    
+
     # FIXME: take a look at this
     # transformer_model_cls = ClipBertForVideoTextRetrieval
     transformer_model_cls = ClipBertForPreTraining
-    
+
     # we separate the CNN and the transformer in order to use different optimizer for each
     # transformer still has a CNN layer inside, used to down sample grid.
     LOGGER.info("setup e2e model")
@@ -251,10 +246,11 @@ def start_demo(cfg):
         quva_dir=cfg.quva_dir,
         something_something_dir=cfg.something_something_dir,
         num_frames=cfg.num_frames,
-        tokenizer=tokenizer,    
+        tokenizer=tokenizer,
     )
 
     num_examples = num_correct = 0
+    results = dict()
     for item in tqdm(data):
         batch = dict(
             visual_inputs=item['visual_inputs'],
@@ -265,20 +261,12 @@ def start_demo(cfg):
             n_examples_list=item['n_examples_list'],
         )
         output = forward_step(model, batch, cfg)
-        num_examples += 1
-        if output['itm_scores'][:, 0].argmax().item() == 0:
-            num_correct += 1
-    LOGGER.info(f"accuracy = {round(100*num_correct/num_examples, 2)}%")
+        probabilities = output['itm_scores'].softmax(dim=-1)
+        item_id = item['item_id']
+        results[item_id] = {'scores': probabilities[:, 0].tolist()}
 
-
-# TODO: implement this function
-def load_video(path):
-    pass
-
-
-# TODO: implement this function
-def make_instance(args):
-    pass
+    with open(process_path(cfg['output_file']), 'w') as f:
+        json.dump(results, f, indent=4)
 
 
 if __name__ == '__main__':

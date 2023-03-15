@@ -62,11 +62,11 @@ class Dataset_v1(Dataset):
         self.fps = fps
         self.num_frames = num_frames
         self.kwargs = kwargs
-        
+
         self.youtube_dir = None
         if youtube_dir is not None:
             self.youtube_dir = process_path(youtube_dir)
-            
+
         self.quva_dir = None
         if quva_dir is not None:
             self.quva_dir = process_path(quva_dir)
@@ -116,18 +116,20 @@ class Dataset_v1(Dataset):
             video = read_video(video_path)[0]
             video = video[item['start_time']:item['end_time']]
         return video
-        
+
     def __len__(self):
         return len(self.json_data)
 
     def __getitem__(self, index):
         entry = deepcopy(self.json_data[index])
         video = self._read_video(entry)
-        
+
         # video preprocessing
         video = video.permute(0, 3, 1, 2)  # [T,H,W,C] -> [T,C,H,W]
         T, C, H, W = video.shape
         step = T // self.num_frames
+        if step == 0:
+            step = T
         video = video[0::step]
         video = video.float()
         video = self.image_resize(video)

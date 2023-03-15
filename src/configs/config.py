@@ -330,6 +330,7 @@ class SharedConfigs(object):
         self.parser.add_argument("--quva_dir", required=True, type=str)
         self.parser.add_argument("--num_frames", required=True, type=int)
         self.parser.add_argument("--something_something_dir", required=True, type=str)
+        self.parser.add_argument("--output-file", required=True, type=str)
         args = self.parse_args()
         return args
 
