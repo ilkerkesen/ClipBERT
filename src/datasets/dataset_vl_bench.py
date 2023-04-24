@@ -55,6 +55,7 @@ class Dataset_v1(Dataset):
         quva_dir=None,
         something_something_dir=None,
         device='cuda:0',
+        proficiency=False,
         **kwargs,
     ):
         self.json_data = BaseDataset(json_path)
@@ -82,6 +83,7 @@ class Dataset_v1(Dataset):
             std=[123.675, 116.28, 103.53],
         )
         self.device = device
+        self.proficiency = proficiency
 
     def _read_video(self, item):
         # find the full path
@@ -139,7 +141,8 @@ class Dataset_v1(Dataset):
 
         # text preprocessing
         text_input_ids = text_input_mask = None
-        raw_texts = [entry['caption']] + entry['foils']
+        subentry = entry if not self.proficiency else entry['proficiency']
+        raw_texts = [subentry['caption']] + subentry['foils']
         if self.tokenizer is not None:
             text_batch = self.tokenizer.batch_encode_plus(
                 raw_texts,

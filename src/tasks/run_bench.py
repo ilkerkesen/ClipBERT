@@ -247,6 +247,7 @@ def start_demo(cfg):
         something_something_dir=cfg.something_something_dir,
         num_frames=cfg.num_frames,
         tokenizer=tokenizer,
+        proficiency=cfg.proficiency,
     )
 
     num_examples = num_correct = 0
